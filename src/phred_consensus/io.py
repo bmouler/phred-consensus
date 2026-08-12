@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from typing import TypeAlias
+
+Observation: TypeAlias = tuple[str, str, tuple[int, ...]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +28,7 @@ def decode_phred(text: str, *, context: str) -> tuple[int, ...]:
 
 
 def _group_records(
-    records: Iterable[tuple[str, str, tuple[int, ...]]],
+    records: Iterable[Observation],
 ) -> Iterator[ReadGroup]:
     current_name: str | None = None
     sequences: list[str] = []
@@ -55,7 +58,7 @@ def parse_fastq(lines: Iterable[str], delimiter: str) -> Iterator[ReadGroup]:
     if not delimiter:
         raise ValueError("ID delimiter must not be empty")
 
-    def records() -> Iterator[tuple[str, str, tuple[int, ...]]]:
+    def records() -> Iterator[Observation]:
         iterator = iter(lines)
         record_number = 0
         while True:
@@ -80,7 +83,7 @@ def parse_fastq(lines: Iterable[str], delimiter: str) -> Iterator[ReadGroup]:
                 raise ValueError(f"FASTQ record {record_number} lacks a '+' separator")
             identifier = header[1:].split(maxsplit=1)[0]
             group = identifier.split(delimiter, maxsplit=1)[0]
-            quality = decode_phred(
+            quality: tuple[int, ...] = decode_phred(
                 quality_text, context=f"FASTQ record {record_number}"
             )
             if len(sequence) != len(quality):
@@ -95,7 +98,7 @@ def parse_fastq(lines: Iterable[str], delimiter: str) -> Iterator[ReadGroup]:
 def parse_tsv(lines: Iterable[str]) -> Iterator[ReadGroup]:
     """Parse headerless group, sequence, Phred+33-quality TSV rows."""
 
-    def records() -> Iterator[tuple[str, str, tuple[int, ...]]]:
+    def records() -> Iterator[Observation]:
         saw_record = False
         for line_number, raw_line in enumerate(lines, start=1):
             saw_record = True
@@ -106,7 +109,9 @@ def parse_tsv(lines: Iterable[str]) -> Iterator[ReadGroup]:
             if len(fields) != 3:
                 raise ValueError(f"TSV line {line_number} must contain three columns")
             group, sequence, quality_text = fields
-            quality = decode_phred(quality_text, context=f"TSV line {line_number}")
+            quality: tuple[int, ...] = decode_phred(
+                quality_text, context=f"TSV line {line_number}"
+            )
             if len(sequence) != len(quality):
                 raise ValueError(
                     f"TSV line {line_number} sequence and quality lengths differ"

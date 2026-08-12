@@ -5,20 +5,36 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Mapping, Sequence
-from contextlib import nullcontext
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
-from typing import TextIO
+from typing import Literal, TextIO, cast
 
 from .benchmark import run_benchmark
 from .core import BASES, call_consensus
-from .io import parse_fastq, parse_tsv
+from .io import ReadGroup, parse_fastq, parse_tsv
+
+InputFormat = Literal["fastq", "tsv"]
+OutputFormat = Literal["fastq", "jsonl"]
+
+
+class _Arguments(argparse.Namespace):
+    input: Path | None
+    output: Path | None
+    input_format: InputFormat
+    output_format: OutputFormat
+    delimiter: str
+    min_posterior: float
+    prior: dict[str, float] | None
+    benchmark: bool
+    seed: int
+    bases: int
 
 
 def _prior(value: str) -> dict[str, float]:
     try:
         fields = value.split(",")
-        parsed = {
+        parsed: dict[str, float] = {
             key.upper(): float(number)
             for key, number in (field.split("=", 1) for field in fields)
         }
@@ -67,13 +83,13 @@ def _write_groups(
     source: TextIO,
     destination: TextIO,
     *,
-    input_format: str,
-    output_format: str,
+    input_format: InputFormat,
+    output_format: OutputFormat,
     delimiter: str,
     prior: Mapping[str, float] | None,
     min_posterior: float,
 ) -> None:
-    groups = (
+    groups: Iterator[ReadGroup] = (
         parse_fastq(source, delimiter) if input_format == "fastq" else parse_tsv(source)
     )
     for group in groups:
@@ -88,48 +104,39 @@ def _write_groups(
                 f"@{group.name}\n{result.sequence}\n+\n{_quality_text(result.qualities)}\n"
             )
         else:
-            destination.write(
-                json.dumps(
-                    {
-                        "group": group.name,
-                        "sequence": result.sequence,
-                        "quality": list(result.qualities),
-                        "posterior": [round(value, 12) for value in result.posteriors],
-                        "reads": len(group.sequences),
-                    },
-                    separators=(",", ":"),
-                )
-                + "\n"
-            )
+            payload: dict[str, str | int | list[int] | list[float]] = {
+                "group": group.name,
+                "sequence": result.sequence,
+                "quality": list(result.qualities),
+                "posterior": [round(value, 12) for value in result.posteriors],
+                "reads": len(group.sequences),
+            }
+            destination.write(json.dumps(payload, separators=(",", ":")) + "\n")
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI and return a process exit status."""
 
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = cast(_Arguments, parser.parse_args(argv))
     try:
         if args.benchmark:
-            result = run_benchmark(seed=args.seed, bases=args.bases)
-            print(
-                json.dumps(
-                    {
-                        "seed": result.seed,
-                        "bases": result.bases,
-                        "reads": result.reads,
-                        "bayesian_mismatches": result.bayesian_mismatches,
-                        "bayesian_rate": result.bayesian_rate,
-                        "majority_mismatches": result.majority_mismatches,
-                        "majority_rate": result.majority_rate,
-                    },
-                    separators=(",", ":"),
-                )
-            )
+            benchmark = run_benchmark(seed=args.seed, bases=args.bases)
+            payload: dict[str, int | float] = {
+                "seed": benchmark.seed,
+                "bases": benchmark.bases,
+                "reads": benchmark.reads,
+                "bayesian_mismatches": benchmark.bayesian_mismatches,
+                "bayesian_rate": benchmark.bayesian_rate,
+                "majority_mismatches": benchmark.majority_mismatches,
+                "majority_rate": benchmark.majority_rate,
+            }
+            print(json.dumps(payload, separators=(",", ":")))
             return 0
-        input_context = (
+        input_context: AbstractContextManager[TextIO] = (
             args.input.open(encoding="ascii") if args.input else nullcontext(sys.stdin)
         )
-        output_context = (
+        output_context: AbstractContextManager[TextIO] = (
             args.output.open("w", encoding="ascii")
             if args.output
             else nullcontext(sys.stdout)

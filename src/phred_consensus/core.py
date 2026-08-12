@@ -5,9 +5,10 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Final
 
-BASES = "ACGT"
-_MAX_PHRED = 60
+BASES: Final = "ACGT"
+_MAX_PHRED: Final = 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,10 +25,10 @@ def _log_prior(prior: Mapping[str, float] | None) -> tuple[float, ...]:
         return (math.log(0.25),) * 4
     if set(prior) != set(BASES):
         raise ValueError("prior must contain exactly A, C, G, and T")
-    values = tuple(float(prior[base]) for base in BASES)
+    values: tuple[float, ...] = tuple(float(prior[base]) for base in BASES)
     if any(not math.isfinite(value) or value <= 0 for value in values):
         raise ValueError("prior probabilities must be finite and positive")
-    logs = tuple(math.log(value) for value in values)
+    logs: tuple[float, ...] = tuple(math.log(value) for value in values)
     maximum = max(logs)
     log_total = maximum + math.log(sum(math.exp(value - maximum) for value in logs))
     return tuple(value - log_total for value in logs)
@@ -40,7 +41,7 @@ def _validate_reads(
         raise ValueError("at least one read is required")
     if len(sequences) != len(qualities):
         raise ValueError("sequence and quality read counts differ")
-    normalised_sequences = [sequence.upper() for sequence in sequences]
+    normalised_sequences: list[str] = [sequence.upper() for sequence in sequences]
     length = len(normalised_sequences[0])
     if length == 0:
         raise ValueError("reads must not be empty")
@@ -55,7 +56,7 @@ def _validate_reads(
             raise ValueError(
                 f"read {index} contains unsupported base(s): {''.join(sorted(invalid))}"
             )
-        quality_tuple = tuple(read_qualities)
+        quality_tuple: tuple[int, ...] = tuple(read_qualities)
         if len(quality_tuple) != length:
             raise ValueError(f"read {index} sequence and quality lengths differ")
         if any(
@@ -67,7 +68,9 @@ def _validate_reads(
         ):
             raise ValueError(f"read {index} qualities must be integers from 0 to 93")
         normalised_qualities.append(quality_tuple)
-    ordered = sorted(zip(normalised_sequences, normalised_qualities, strict=True))
+    ordered: list[tuple[str, tuple[int, ...]]] = sorted(
+        zip(normalised_sequences, normalised_qualities, strict=True)
+    )
     return (
         length,
         [sequence for sequence, _ in ordered],
@@ -76,7 +79,7 @@ def _validate_reads(
 
 
 def _posterior_quality(posterior: float) -> int:
-    error_probability = max(1.0 - posterior, 10 ** (-_MAX_PHRED / 10))
+    error_probability: float = max(1.0 - posterior, 10.0 ** (-_MAX_PHRED / 10.0))
     return min(_MAX_PHRED, round(-10.0 * math.log10(error_probability)))
 
 
@@ -97,19 +100,19 @@ def call_consensus(
     if not math.isfinite(min_posterior) or not 0.0 <= min_posterior <= 1.0:
         raise ValueError("min_posterior must be between 0 and 1")
     length, sequences_list, qualities_list = _validate_reads(sequences, qualities)
-    log_prior = _log_prior(prior)
+    log_prior: tuple[float, ...] = _log_prior(prior)
     consensus: list[str] = []
     consensus_qualities: list[int] = []
     posteriors: list[float] = []
 
     for position in range(length):
-        scores = list(log_prior)
+        scores: list[float] = list(log_prior)
         for sequence, read_qualities in zip(
             sequences_list, qualities_list, strict=True
         ):
             observed = sequence[position]
-            error = 10.0 ** (-read_qualities[position] / 10.0)
-            correct = 1.0 - error
+            error: float = 10.0 ** (-read_qualities[position] / 10.0)
+            correct: float = 1.0 - error
             for candidate_index, candidate in enumerate(BASES):
                 probability = correct if candidate == observed else error / 3.0
                 if probability == 0.0:
@@ -121,10 +124,10 @@ def call_consensus(
             raise ValueError(
                 f"position {position + 1} has zero probability for every candidate"
             )
-        weights = [math.exp(score - maximum) for score in scores]
-        denominator = sum(weights)
-        winner_index = max(range(4), key=lambda index: weights[index])
-        posterior = weights[winner_index] / denominator
+        weights: list[float] = [math.exp(score - maximum) for score in scores]
+        denominator: float = sum(weights)
+        winner_index: int = max(range(4), key=weights.__getitem__)
+        posterior: float = weights[winner_index] / denominator
         base = BASES[winner_index] if posterior >= min_posterior else "N"
         consensus.append(base)
         consensus_qualities.append(_posterior_quality(posterior))
@@ -140,7 +143,7 @@ def majority_consensus(sequences: Sequence[str]) -> str:
 
     if not sequences:
         raise ValueError("at least one read is required")
-    normalised = [sequence.upper() for sequence in sequences]
+    normalised: list[str] = [sequence.upper() for sequence in sequences]
     length = len(normalised[0])
     if length == 0:
         raise ValueError("reads must not be empty")

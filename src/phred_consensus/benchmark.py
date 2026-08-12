@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from typing import Final
 
 from .core import BASES, call_consensus, majority_consensus
+
+_QUALITY_LEVELS: Final = (3, 3, 3, 30, 30)
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +31,7 @@ class BenchmarkResult:
 
 
 def _observe(rng: random.Random, base: str, quality: int) -> str:
-    error_probability = 10.0 ** (-quality / 10.0)
+    error_probability: float = 10.0 ** (-quality / 10.0)
     if rng.random() >= error_probability:
         return base
     alternatives = BASES.replace(base, "")
@@ -41,15 +44,16 @@ def run_benchmark(*, seed: int = 2026, bases: int = 2000) -> BenchmarkResult:
     if bases <= 0:
         raise ValueError("bases must be positive")
     rng = random.Random(seed)
-    truth = "".join(rng.choice(BASES) for _ in range(bases))
-    quality_levels = (3, 3, 3, 30, 30)
-    reads = [
+    truth: str = "".join(rng.choice(BASES) for _ in range(bases))
+    reads: list[str] = [
         "".join(_observe(rng, base, quality) for base in truth)
-        for quality in quality_levels
+        for quality in _QUALITY_LEVELS
     ]
-    qualities = [tuple([quality] * bases) for quality in quality_levels]
-    bayesian = call_consensus(reads, qualities).sequence
-    majority = majority_consensus(reads)
+    qualities: list[tuple[int, ...]] = [
+        (quality,) * bases for quality in _QUALITY_LEVELS
+    ]
+    bayesian: str = call_consensus(reads, qualities).sequence
+    majority: str = majority_consensus(reads)
     return BenchmarkResult(
         seed=seed,
         bases=bases,
