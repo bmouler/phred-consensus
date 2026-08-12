@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it.
+type: software
+title: phred-consensus
+abstract: Phred-aware Bayesian consensus calling for aligned reads
+authors:
+  - family-names: Mouler
+    given-names: Bert
+license: MIT
+repository-code: https://github.com/bmouler/phred-consensus
+version: 1.0.0
+date-released: "2026-08-12"

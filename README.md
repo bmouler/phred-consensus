@@ -1,6 +1,11 @@
 # phred-consensus
 
-[![CI](https://github.com/bmouler/phred-consensus/actions/workflows/ci.yml/badge.svg)](https://github.com/bmouler/phred-consensus/actions/workflows/ci.yml) [![branch coverage](https://img.shields.io/badge/branch%20coverage-100%25-brightgreen)](https://github.com/bmouler/phred-consensus/actions/workflows/ci.yml) [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/) [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![CI](https://github.com/bmouler/phred-consensus/actions/workflows/ci.yml/badge.svg)](https://github.com/bmouler/phred-consensus/actions/workflows/ci.yml)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![Types](https://img.shields.io/badge/types-mypy%20strict-blue)
+![Mutation](https://img.shields.io/badge/mutation-95%25%20killed-brightgreen)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A dependency-free Python library and CLI for Phred-aware Bayesian consensus calling from aligned, same-length reads. It combines observations in log space, reports posterior-derived consensus qualities, and offers an explicit unweighted majority baseline.
 
@@ -9,7 +14,7 @@ A dependency-free Python library and CLI for Phred-aware Bayesian consensus call
 Python 3.11 or newer is required.
 
 ```bash
-python -m pip install .
+python -m pip install phred-consensus
 ```
 
 For development and verification:
@@ -61,6 +66,10 @@ print(result.sequence, result.qualities, result.posteriors)
 
 ## Algorithm
 
+```mermaid
+flowchart LR; F[FASTQ/TSV reads] --> G[group by ID prefix]; G --> L[per-position log-likelihoods<br/>e = 10^-Q/10]; P[prior, log-sum-exp] --> L; L --> W[posterior per base]; W --> O[consensus + Phred qualities]
+```
+
 For an observed base $b$ with Phred score $Q$, the error probability is $e=10^{-Q/10}$. The likelihood is $1-e$ when a candidate equals $b$, and $e/3$ for each of the other three bases. For candidate $x$ at a position, the implementation computes
 
 $$
@@ -84,6 +93,30 @@ The benchmark test asserts determinism and that the Bayesian mismatch count is l
 ## Input validation
 
 The caller rejects empty groups, unequal sequence/quality lengths, unequal aligned-read lengths, symbols outside `A/C/G/T`, quality values outside 0–93, malformed FASTQ structure, non-Phred+33 text, blank or malformed TSV rows, invalid priors, invalid posterior thresholds, and noncontiguous repeated groups. Errors are reported on stderr with a nonzero status.
+
+## Verification
+
+### Mutation testing
+
+The deterministic suite generated **764 mutants and killed 729 (95.42%)**. The 35 survivors were individually reviewed and are behavior-equivalent under the validated public contract, not missed mutants; there were zero suspicious results and zero timeouts. Mutation testing also exposed duplicate prior keys being silently overwritten; the parser now rejects them.
+
+| Reviewed equivalent rationale | Count |
+| --- | ---: |
+| Validated equal-length inputs make strict/non-strict `zip` behavior identical | 15 |
+| Parser delimiter, `maxsplit`, separator, and sentinel identities | 12 |
+| Additive log-prior normalization constants cancel from posterior ratios | 3 |
+| The posterior-quality floor is hidden by integer rounding and the quality-60 cap | 1 |
+| The infinity guard differs only for unreachable validated states | 1 |
+| UTF-8/type-only/default identities and benchmark PRNG equality | 3 |
+| **Total reviewed equivalents** | **35** |
+
+Reproduce the campaign from the repository root:
+
+```bash
+source .venv/bin/activate
+mutmut run
+mutmut results
+```
 
 ## Limitations
 

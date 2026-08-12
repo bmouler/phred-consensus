@@ -30,6 +30,52 @@ def test_parse_fastq_groups_by_prefix_and_accepts_plus_annotation() -> None:
     assert groups[1].qualities == ((0, 0),)
 
 
+def test_fastq_parses_crlf_without_stripping_sequence_whitespace() -> None:
+    groups = list(parse_fastq(["@g/x/y note\r\n", " A\r\n", "+\r\n", "!I\r\n"], "/"))
+
+    assert groups[0].name == "g"
+    assert groups[0].sequences == (" A",)
+    assert groups[0].qualities == ((0, 40),)
+
+
+def test_fastq_uses_the_first_delimiter_in_an_identifier() -> None:
+    groups = list(parse_fastq(["@family/child/read\n", "A\n", "+\n", "I\n"], "/"))
+
+    assert groups[0].name == "family"
+
+
+def test_fastq_strips_only_line_endings_from_all_record_lines() -> None:
+    groups = list(
+        parse_fastq(
+            ["@g/1 \t\r\n", "A \t\r\n", "+ \t\r\n", "II?\r\n"],
+            "/",
+        )
+    )
+
+    assert groups[0].name == "g"
+    assert groups[0].sequences == ("A \t",)
+    assert groups[0].qualities == ((40, 40, 30),)
+
+
+def test_fastq_line_endings_do_not_consume_valid_trailing_characters() -> None:
+    groups = list(
+        parse_fastq(
+            ["@groupX\n", "AX\n", "+\n", "IX\n"],
+            "/",
+        )
+    )
+
+    assert groups[0].name == "groupX"
+    assert groups[0].sequences == ("AX",)
+    assert groups[0].qualities == ((40, 55),)
+
+
+def test_fastq_identifier_ends_at_first_whitespace() -> None:
+    groups = list(parse_fastq(["@g note more\n", "A\n", "+\n", "I\n"], "/"))
+
+    assert groups[0].name == "g"
+
+
 def test_parse_tsv_groups_rows() -> None:
     groups = list(parse_tsv(["one\tAC\tII\n", "one\tAG\tI?\n", "two\tT\t5\n"]))
 
@@ -88,6 +134,19 @@ def test_noncontiguous_group_is_rejected() -> None:
         list(parse_tsv(["a\tA\tI\n", "b\tA\tI\n", "a\tA\tI\n"]))
 
 
+def test_group_record_error_preserves_group_name() -> None:
+    with pytest.raises(ValueError, match="group 'a' is not contiguous"):
+        list(
+            _group_records(
+                [
+                    ("a", "A", (40,)),
+                    ("b", "A", (40,)),
+                    ("a", "A", (40,)),
+                ]
+            )
+        )
+
+
 @pytest.mark.parametrize(
     ("lines", "delimiter", "message"),
     [
@@ -107,6 +166,42 @@ def test_fastq_errors(lines: list[str], delimiter: str, message: str) -> None:
         list(parse_fastq(lines, delimiter))
 
 
+def test_fastq_error_messages_include_exact_record_number_and_context() -> None:
+    with pytest.raises(ValueError, match="FASTQ record 2 is incomplete"):
+        list(
+            parse_fastq(
+                ["@a/1\n", "A\n", "+\n", "I\n", "@a/2\n", "A\n"],
+                "/",
+            )
+        )
+
+    with pytest.raises(
+        ValueError, match="FASTQ record 2: quality contains a non-Phred"
+    ):
+        list(
+            parse_fastq(
+                [
+                    "@a/1\n",
+                    "A\n",
+                    "+\n",
+                    "I\n",
+                    "@a/2\n",
+                    "A\n",
+                    "+\n",
+                    " \n",
+                ],
+                "/",
+            )
+        )
+
+
+def test_fastq_empty_delimiter_error_is_exact() -> None:
+    with pytest.raises(ValueError) as error:
+        list(parse_fastq([], ""))
+
+    assert str(error.value) == "ID delimiter must not be empty"
+
+
 @pytest.mark.parametrize(
     ("lines", "message"),
     [
@@ -121,6 +216,34 @@ def test_fastq_errors(lines: list[str], delimiter: str, message: str) -> None:
 def test_tsv_errors(lines: list[str], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         list(parse_tsv(lines))
+
+
+def test_tsv_preserves_spaces_and_reports_exact_line_context() -> None:
+    groups = list(parse_tsv(["g\t A\t!I\r\n"]))
+    assert groups[0].sequences == (" A",)
+
+    with pytest.raises(ValueError, match="TSV line 2: quality contains a non-Phred"):
+        list(parse_tsv(["g\tA\tI\n", "g\tA\t \n"]))
+
+
+def test_tsv_line_endings_do_not_consume_valid_trailing_characters() -> None:
+    groups = list(parse_tsv(["g\tX\tX\n"]))
+
+    assert groups[0].sequences == ("X",)
+    assert groups[0].qualities == ((55,),)
+
+
+def test_empty_input_and_group_name_messages_are_exact() -> None:
+    with pytest.raises(ValueError) as fastq_error:
+        list(parse_fastq([], "/"))
+    with pytest.raises(ValueError) as tsv_error:
+        list(parse_tsv([]))
+    with pytest.raises(ValueError) as group_error:
+        list(_group_records([("", "A", (40,))]))
+
+    assert str(fastq_error.value) == "input contains no records"
+    assert str(tsv_error.value) == "input contains no records"
+    assert str(group_error.value) == "group name must not be empty"
 
 
 def test_decode_phred_boundaries() -> None:

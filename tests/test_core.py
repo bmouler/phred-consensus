@@ -59,6 +59,24 @@ def test_prior_is_normalised() -> None:
     assert first == second
 
 
+def test_default_prior_is_a_normalized_uniform_distribution() -> None:
+    result = call_consensus(["A"], [[0]])
+
+    assert result.posteriors == pytest.approx((1 / 3,))
+
+
+def test_nonuniform_prior_posterior_is_numerically_exact() -> None:
+    result = call_consensus(
+        ["A"],
+        [[10]],
+        prior={"A": 1, "C": 2, "G": 3, "T": 4},
+    )
+
+    assert result.sequence == "A"
+    assert result.posteriors == pytest.approx((0.75,))
+    assert result.qualities == (6,)
+
+
 @pytest.mark.parametrize(
     ("sequences", "qualities", "message"),
     [
@@ -81,10 +99,43 @@ def test_call_consensus_rejects_bad_reads(
         call_consensus(sequences, qualities)  # type: ignore[arg-type]
 
 
+def test_read_validation_errors_report_one_based_indices_and_invalid_bases() -> None:
+    with pytest.raises(ValueError) as error:
+        call_consensus(["AA", "XN"], [[20, 20], [20, 20]])
+    assert str(error.value) == "read 2 contains unsupported base(s): NX"
+
+    with pytest.raises(ValueError, match="read 2 has a different sequence length"):
+        call_consensus(["AA", "A"], [[20, 20], [20]])
+
+
+def test_phred_93_is_accepted() -> None:
+    result = call_consensus(["A"], [[93]])
+
+    assert result.sequence == "A"
+    assert result.qualities == (60,)
+
+
 @pytest.mark.parametrize("threshold", [-0.1, 1.1, math.inf, math.nan])
 def test_call_consensus_rejects_bad_threshold(threshold: float) -> None:
     with pytest.raises(ValueError, match="between 0 and 1"):
         call_consensus(["A"], [[20]], min_posterior=threshold)
+
+
+def test_threshold_one_is_valid_and_equality_is_inclusive() -> None:
+    certain = call_consensus(
+        ["A"],
+        [[20]],
+        prior={"A": 1e308, "C": 5e-324, "G": 5e-324, "T": 5e-324},
+        min_posterior=1.0,
+    )
+    exact = call_consensus(["A", "C"], [[20], [20]])
+    inclusive = call_consensus(
+        ["A", "C"], [[20], [20]], min_posterior=exact.posteriors[0]
+    )
+
+    assert certain.sequence == "A"
+    assert certain.posteriors == (1.0,)
+    assert inclusive.sequence == "A"
 
 
 @pytest.mark.parametrize(
@@ -100,6 +151,30 @@ def test_call_consensus_rejects_bad_threshold(threshold: float) -> None:
 def test_call_consensus_rejects_bad_prior(prior: dict[str, float]) -> None:
     with pytest.raises(ValueError, match="prior"):
         call_consensus(["A"], [[20]], prior=prior)
+
+
+def test_validation_error_messages_are_exact() -> None:
+    cases = [
+        (([], []), "at least one read is required"),
+        ((["A"], []), "sequence and quality read counts differ"),
+        (([""], [[]]), "reads must not be empty"),
+    ]
+    for arguments, message in cases:
+        with pytest.raises(ValueError) as error:
+            call_consensus(*arguments)
+        assert str(error.value) == message
+
+    with pytest.raises(ValueError) as prior_keys:
+        call_consensus(["A"], [[20]], prior={"A": 1})
+    assert str(prior_keys.value) == "prior must contain exactly A, C, G, and T"
+
+    with pytest.raises(ValueError) as prior_values:
+        call_consensus(["A"], [[20]], prior=dict.fromkeys("ACGT", 0))
+    assert str(prior_values.value) == "prior probabilities must be finite and positive"
+
+    with pytest.raises(ValueError) as threshold:
+        call_consensus(["A"], [[20]], min_posterior=-1)
+    assert str(threshold.value) == "min_posterior must be between 0 and 1"
 
 
 def test_extreme_finite_prior_weights_normalise_in_log_space() -> None:
@@ -119,8 +194,34 @@ def test_mutually_impossible_q_zero_observations_are_rejected() -> None:
         call_consensus(list("ACGT"), [[0], [0], [0], [0]])
 
 
+def test_zero_probability_error_reports_one_based_position() -> None:
+    with pytest.raises(ValueError, match="position 2 has zero probability"):
+        call_consensus(
+            ["AA", "AC", "AG", "AT"],
+            [[20, 0], [20, 0], [20, 0], [20, 0]],
+        )
+
+
 def test_majority_tie_and_lowercase() -> None:
     assert majority_consensus(["ac", "ca"]) == "AA"
+
+
+def test_majority_errors_report_one_based_indices_and_invalid_bases() -> None:
+    with pytest.raises(ValueError, match=r"read 2 contains unsupported base\(s\): NX"):
+        majority_consensus(["AA", "XN"])
+
+    with pytest.raises(ValueError, match="read 2 has a different sequence length"):
+        majority_consensus(["AA", "A"])
+
+
+def test_majority_validation_messages_are_exact() -> None:
+    with pytest.raises(ValueError) as missing:
+        majority_consensus([])
+    with pytest.raises(ValueError) as empty:
+        majority_consensus([""])
+
+    assert str(missing.value) == "at least one read is required"
+    assert str(empty.value) == "reads must not be empty"
 
 
 @pytest.mark.parametrize(
@@ -135,3 +236,10 @@ def test_majority_tie_and_lowercase() -> None:
 def test_majority_rejects_bad_reads(sequences: list[str], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         majority_consensus(sequences)
+
+
+def test_majority_invalid_bases_message_is_exact() -> None:
+    with pytest.raises(ValueError) as error:
+        majority_consensus(["XN"])
+
+    assert str(error.value) == "read 1 contains unsupported base(s): NX"

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "phred-consensus"
-version = "0.1.0"
+version = "1.0.0"
 description = "Phred-aware Bayesian consensus calling for aligned reads"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,10 +12,13 @@ license = { file = "LICENSE" }
 authors = [{ name = "Bert Mouler" }]
 keywords = ["bioinformatics", "consensus", "phred", "bayesian"]
 classifiers = [
+  "Development Status :: 5 - Production/Stable",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "License :: OSI Approved :: MIT License",
+  "Typing :: Typed",
 ]
 dependencies = []
 
@@ -25,6 +28,7 @@ dev = [
   "pytest-cov>=5",
   "hypothesis>=6.100",
   "mypy>=1.14",
+  "mutmut>=3.7",
   "ruff>=0.9",
 ]
 
@@ -58,3 +62,6 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 strict = true
 files = ["src"]
 python_version = "3.11"
+
+[tool.mutmut]
+source_paths = ["src/phred_consensus"]
