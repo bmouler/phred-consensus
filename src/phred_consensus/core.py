@@ -67,7 +67,12 @@ def _validate_reads(
         ):
             raise ValueError(f"read {index} qualities must be integers from 0 to 93")
         normalised_qualities.append(quality_tuple)
-    return length, normalised_sequences, normalised_qualities
+    ordered = sorted(zip(normalised_sequences, normalised_qualities, strict=True))
+    return (
+        length,
+        [sequence for sequence, _ in ordered],
+        [quality for _, quality in ordered],
+    )
 
 
 def _posterior_quality(posterior: float) -> int:
