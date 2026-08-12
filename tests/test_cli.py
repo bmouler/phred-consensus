@@ -147,7 +147,10 @@ def test_parser_help_and_defaults_are_public_cli_contract() -> None:
     assert args.seed == 2026
     assert args.bases == 2000
     assert "input file (default: stdin)" in help_text
-    assert "-o OUTPUT, --output OUTPUT" in help_text
+    assert any(
+        rendering in help_text
+        for rendering in ("-o OUTPUT, --output OUTPUT", "-o, --output OUTPUT")
+    )
     assert "FASTQ ID prefix delimiter (default: /)" in help_text
     assert "run the seeded synthetic benchmark" in help_text
     assert "benchmark random seed" in help_text
