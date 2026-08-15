@@ -194,6 +194,23 @@ def test_mutually_impossible_q_zero_observations_are_rejected() -> None:
         call_consensus(list("ACGT"), [[0], [0], [0], [0]])
 
 
+def test_integer_subclass_qualities_preserve_q_zero_bayesian_behavior() -> None:
+    class QualityInt(int):
+        pass
+
+    one_observation = call_consensus(["A"], [[QualityInt(0)]])
+    conflicting_observations = call_consensus(
+        ["A", "C"], [[QualityInt(0)], [QualityInt(0)]]
+    )
+
+    assert one_observation.sequence == "C"
+    assert one_observation.qualities == (2,)
+    assert one_observation.posteriors == (1 / 3,)
+    assert conflicting_observations.sequence == "G"
+    assert conflicting_observations.qualities == (3,)
+    assert conflicting_observations.posteriors == (0.5,)
+
+
 def test_zero_probability_error_reports_one_based_position() -> None:
     with pytest.raises(ValueError, match="position 2 has zero probability"):
         call_consensus(

@@ -90,6 +90,19 @@ phred-consensus --benchmark --seed 2026 --bases 2000
 
 The benchmark test asserts determinism and that the Bayesian mismatch count is lower; it does not treat this synthetic scenario as a claim about every biological dataset.
 
+### End-to-end performance
+
+`PYTHONPATH=src python benchmarks/benchmark_consensus.py --samples 11 --warmups 2` calls the
+public consensus API across 240 heterogeneous aligned-read groups: 2,928 reads and 527,040
+observations, with every `ConsensusResult` materialized. Fixture generation and interpreter
+startup are outside the timed region.
+
+On an Apple M3 Max with CPython 3.11.12 on 2026-08-15, frozen baseline `4bc06076cc50`
+measured **353.470 ms** median and this implementation **121.415 ms**, a **2.911x speedup**.
+Both runs produced SHA-256
+`21481dbcff097c4aaf679005f7433940f31343e1d48eac299ac7de7b8a20a841`. These are
+local in-process timings; rerun with `PYTHONPATH` pointed at the desired source worktree.
+
 ## Input validation
 
 The caller rejects empty groups, unequal sequence/quality lengths, unequal aligned-read lengths, symbols outside `A/C/G/T`, quality values outside 0–93, malformed FASTQ structure, non-Phred+33 text, blank or malformed TSV rows, invalid priors, invalid posterior thresholds, and noncontiguous repeated groups. Errors are reported on stderr with a nonzero status.
