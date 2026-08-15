@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "phred-consensus"
-version = "1.0.0"
+version = "1.0.1"
 description = "Phred-aware Bayesian consensus calling for aligned reads"
 readme = "README.md"
 requires-python = ">=3.11"

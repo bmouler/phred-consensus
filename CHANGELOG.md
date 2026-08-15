@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-15
+
 - Precomputed exact per-quality Bayesian likelihood vectors and specialized the canonical integer-Phred hot path while retaining accepted subclass semantics.
 - Added a deterministic end-to-end heterogeneous-group consensus benchmark with exact result checksums.
 
